@@ -31,8 +31,8 @@ def parse_args():
     p.add_argument("--alpha", type=int, default=32)
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--epochs", type=float, default=1.0)
-    p.add_argument("--batch_size", type=int, default=4)
-    p.add_argument("--grad_accum", type=int, default=4)
+    p.add_argument("--batch_size", type=int, default=2)
+    p.add_argument("--grad_accum", type=int, default=8)
     p.add_argument("--max_len", type=int, default=1024)
     p.add_argument("--max_steps", type=int, default=-1, help="override epochs, e.g. for a smoke test")
     p.add_argument("--max_train_samples", type=int, default=None)
@@ -41,13 +41,17 @@ def parse_args():
     return p.parse_args()
 
 
-def pick_dtype():
-    if torch.cuda.is_available():
-        return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    return torch.float32  # MPS/CPU: only used for smoke tests
+def pick_dtypes():
+    """Returns (weight dtype, mixed-precision dtype or None)."""
+    if not torch.cuda.is_available():
+        return torch.float32, None  # MPS/CPU: only used for smoke tests
+    if torch.cuda.is_bf16_supported():
+        return torch.bfloat16, torch.bfloat16
+    # T4 and older: keep weights in fp32 and only autocast to fp16, since pure fp16 Qwen can overflow to NaN.
+    return torch.float32, torch.float16
 
 
-def load_model(args, dtype):
+def load_model(args, dtype, amp_dtype):
     kwargs = {"dtype": dtype}
     if args.method == "qlora":
         if not torch.cuda.is_available():
@@ -57,7 +61,7 @@ def load_model(args, dtype):
         kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=dtype,
+            bnb_4bit_compute_dtype=amp_dtype,
             bnb_4bit_use_double_quant=True,
         )
         kwargs["device_map"] = {"": 0}
@@ -85,7 +89,7 @@ def main():
     args = parse_args()
     run_name = f"{args.method}-r{args.rank}"
     out = Path(args.out_dir) / run_name
-    dtype = pick_dtype()
+    dtype, amp_dtype = pick_dtypes()
 
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     if tokenizer.pad_token is None:
@@ -94,7 +98,7 @@ def main():
                                    seed=args.seed)
     print(f"examples: train={len(train)} val={len(val)} test={len(test)}")
 
-    model = load_model(args, dtype)
+    model = load_model(args, dtype, amp_dtype)
     trainable, total = model.get_nb_trainable_parameters()
     model.print_trainable_parameters()
 
@@ -108,8 +112,8 @@ def main():
         learning_rate=args.lr,
         lr_scheduler_type="cosine",
         warmup_steps=0.03,  # a float < 1 is a fraction of total steps
-        bf16=dtype == torch.bfloat16,
-        fp16=dtype == torch.float16,
+        bf16=amp_dtype == torch.bfloat16,
+        fp16=amp_dtype == torch.float16,
         gradient_checkpointing=True,
         logging_steps=10,
         eval_strategy="steps",
@@ -149,6 +153,7 @@ def main():
         "test_perplexity": round(math.exp(test_loss), 2),
         "adapter_mb": round(dir_size_mb(out / "adapter"), 1),
         "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "precision": f"weights {dtype}, amp {amp_dtype}",
     }
     (out / "metrics.json").write_text(json.dumps(metrics, indent=2))
     print(json.dumps(metrics, indent=2))

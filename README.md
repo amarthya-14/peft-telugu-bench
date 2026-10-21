@@ -10,7 +10,7 @@ How much do LoRA, DoRA and QLoRA differ when fine-tuning a small LLM for Telugu,
 | Data | Telugu subset of [`CohereLabs/aya_dataset`](https://huggingface.co/datasets/CohereLabs/aya_dataset) (human-written, Apache-2.0): 8,439 train / 250 test |
 | Splits | 300 examples of Aya train held out for validation; Aya test used only for the final number |
 | Adapters | rank 16, alpha 32, dropout 0.05, all linear layers |
-| Training | 1 epoch, lr 2e-4 cosine, effective batch 16, loss on answer tokens only |
+| Training | 1 epoch, lr 2e-4 cosine, effective batch 16 (2 × 8 accumulation), loss on answer tokens only |
 
 ### Telugu is expensive to tokenize
 
