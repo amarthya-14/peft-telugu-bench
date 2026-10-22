@@ -26,6 +26,8 @@ The Qwen3 tokenizer gets ~0.7 characters per token on this data (English is typi
 
 _GPU: Tesla T4 (Colab), 4,982 training examples. PyTorch reports bf16 as supported on the T4 (emulated), so runs use bf16 weights and bf16 autocast; all three methods use the same setting. Each run writes `results/<method>-r16/metrics.json`._
 
+LoRA validation loss: 0.862 (step 100), 0.821 (200), 0.811 (300), 0.811 (end), so it has levelled off by the end of the single epoch. Test loss is lower than validation loss because the two sets come from different Aya splits, so the two numbers shouldn't be compared directly.
+
 ## Run
 
 ```bash
