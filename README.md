@@ -42,7 +42,7 @@ uv run python train.py --model trl-internal-testing/tiny-Qwen3ForCausalLM \
   --max_train_samples 32 --max_steps 3 --batch_size 2 --grad_accum 1
 ```
 
-On Colab/Kaggle, use `colab_train.ipynb`.
+On Colab, use `colab_train.ipynb`; on Kaggle, `kaggle_train.ipynb` (runs DoRA and QLoRA in the background).
 
 ## Next
 
