@@ -20,11 +20,11 @@ The Qwen3 tokenizer gets ~0.7 characters per token on this data (English is typi
 
 | Method | Trainable params | Peak GPU mem | Train time | Test loss | Test ppl | Adapter size |
 |---|---|---|---|---|---|---|
-| LoRA | | | | | | |
+| LoRA | 10.1M (1.67%) | 5.24 GB | 115 min | 0.760 | 2.14 | 40.4 MB |
 | DoRA | | | | | | |
 | QLoRA | | | | | | |
 
-_GPU: TBD. Each run writes `results/<method>-r16/metrics.json`._
+_GPU: Tesla T4 (Colab), 4,982 training examples. PyTorch reports bf16 as supported on the T4 (emulated), so runs use bf16 weights and bf16 autocast; all three methods use the same setting. Each run writes `results/<method>-r16/metrics.json`._
 
 ## Run
 
