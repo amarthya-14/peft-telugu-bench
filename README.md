@@ -44,6 +44,8 @@ uv run python train.py --model trl-internal-testing/tiny-Qwen3ForCausalLM \
 
 On Colab, use `colab_train.ipynb`; on Kaggle, `kaggle_train.ipynb` (runs DoRA and QLoRA in the background).
 
+Training saves a checkpoint every 50 steps. If a run is cut off (a Colab disconnect, a laptop going to sleep), rerun the same command and it resumes from the last checkpoint; `metrics.json` then reports the total training time and `resumed_from`.
+
 ## Next
 
 - Generation-based eval (chrF on test answers), not just loss

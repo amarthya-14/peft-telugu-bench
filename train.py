@@ -17,8 +17,10 @@ from transformers import (
     AutoTokenizer,
     DataCollatorForSeq2Seq,
     Trainer,
+    TrainerCallback,
     TrainingArguments,
 )
+from transformers.trainer_utils import get_last_checkpoint
 
 from data import load_splits
 
@@ -36,6 +38,7 @@ def parse_args():
     p.add_argument("--max_len", type=int, default=1024)
     p.add_argument("--max_steps", type=int, default=-1, help="override epochs, e.g. for a smoke test")
     p.add_argument("--max_train_samples", type=int, default=None)
+    p.add_argument("--save_steps", type=int, default=50, help="checkpoint interval; a rerun resumes from the last one")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out_dir", default="results")
     return p.parse_args()
@@ -81,6 +84,21 @@ def load_model(args, dtype, amp_dtype):
     return get_peft_model(model, config)
 
 
+class TrainTimeCallback(TrainerCallback):
+    """Stores the training time so far in each checkpoint, so a resumed run reports its total time."""
+
+    def __init__(self, previous_seconds):
+        self.previous_seconds = previous_seconds
+        self.start = time.time()
+
+    def elapsed(self):
+        return self.previous_seconds + time.time() - self.start
+
+    def on_save(self, args, state, control, **kwargs):
+        ckpt = Path(args.output_dir) / f"checkpoint-{state.global_step}"
+        (ckpt / "train_seconds.json").write_text(json.dumps(self.elapsed()))
+
+
 def dir_size_mb(path):
     return sum(f.stat().st_size for f in Path(path).rglob("*") if f.is_file()) / 1e6
 
@@ -121,10 +139,23 @@ def main():
         logging_steps=10,
         eval_strategy="steps",
         eval_steps=100,
-        save_strategy="no",
+        # Checkpoint often: a Colab disconnect otherwise throws away hours of training.
+        save_strategy="steps",
+        save_steps=args.save_steps,
+        save_total_limit=1,
         report_to="none",
         seed=args.seed,
     )
+    ckpt_dir = Path(training_args.output_dir)
+    last_ckpt = get_last_checkpoint(ckpt_dir) if ckpt_dir.is_dir() else None
+    previous_seconds = 0.0
+    if last_ckpt:
+        print(f"resuming from {last_ckpt}")
+        time_file = Path(last_ckpt) / "train_seconds.json"
+        if time_file.exists():
+            previous_seconds = json.loads(time_file.read_text())
+    timer = TrainTimeCallback(previous_seconds)
+
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -132,13 +163,13 @@ def main():
         eval_dataset=val,
         data_collator=DataCollatorForSeq2Seq(tokenizer, padding=True, label_pad_token_id=-100),
         processing_class=tokenizer,
+        callbacks=[timer],
     )
 
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
-    start = time.time()
-    trainer.train()
-    train_minutes = (time.time() - start) / 60
+    trainer.train(resume_from_checkpoint=last_ckpt)
+    train_minutes = timer.elapsed() / 60
 
     test_loss = trainer.evaluate(test, metric_key_prefix="test")["test_loss"]
     model.save_pretrained(out / "adapter")
@@ -157,6 +188,8 @@ def main():
         "adapter_mb": round(dir_size_mb(out / "adapter"), 1),
         "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
         "precision": f"weights {dtype}, amp {amp_dtype}",
+        # peak_gpu_mem_gb only covers the final session of a resumed run.
+        "resumed_from": Path(last_ckpt).name if last_ckpt else None,
     }
     (out / "metrics.json").write_text(json.dumps(metrics, indent=2))
     print(json.dumps(metrics, indent=2))
