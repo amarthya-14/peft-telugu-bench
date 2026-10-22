@@ -89,6 +89,9 @@ def main():
     args = parse_args()
     run_name = f"{args.method}-r{args.rank}"
     out = Path(args.out_dir) / run_name
+    if not torch.cuda.is_available() and args.max_steps < 0:
+        # A full run on CPU takes days (Colab silently gives a CPU runtime when GPU quota runs out).
+        raise SystemExit("No GPU found. Switch the runtime to a GPU, or pass --max_steps for a smoke test.")
     dtype, amp_dtype = pick_dtypes()
 
     tokenizer = AutoTokenizer.from_pretrained(args.model)
