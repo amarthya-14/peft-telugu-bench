@@ -1,0 +1,15 @@
+{
+  "method": "dora",
+  "model": "Qwen/Qwen3-0.6B",
+  "rank": 16,
+  "trainable_params": 10436608,
+  "trainable_pct": 1.721,
+  "train_examples": 4982,
+  "train_minutes": 204.9,
+  "peak_gpu_mem_gb": 5.24,
+  "test_loss": 0.7585,
+  "test_perplexity": 2.14,
+  "adapter_mb": 41.8,
+  "gpu": "Tesla T4",
+  "precision": "weights torch.bfloat16, amp torch.bfloat16"
+}
